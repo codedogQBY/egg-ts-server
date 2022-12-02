@@ -1,9 +1,6 @@
 import { Controller } from 'egg';
 import { Op } from 'sequelize';
 import svgCaptcha from 'svg-captcha';
-import { handleError, handleSuccess } from '../utils/handle';
-import { sendMail } from '../utils/mailer';
-
 /**
  * @Controller user
  */
@@ -24,19 +21,19 @@ export default class UserController extends Controller {
       if (!bool) {
 
         if (+code !== +ctx.session?.code) {
-          handleError({ ctx, message: '验证码错误' });
+          ctx.helper.response.handleError({ ctx, msg: '验证码错误' });
           return;
         }
         await ctx.model.User.create({
           password, user_name: userName, email,
         });
-        handleSuccess({ ctx, message: '注册成功' });
+        ctx.helper.response.handleSuccess({ ctx, msg: '注册成功' });
       } else {
-        handleSuccess({ ctx, message: msg });
+        ctx.helper.response.handleErrorr({ ctx, msg });
       }
 
     } catch (error) {
-      handleError({ ctx, message: '用户注册失败' });
+      ctx.helper.response.handleErrorr({ ctx, msg: '用户注册失败' });
     }
   }
 
@@ -54,13 +51,13 @@ export default class UserController extends Controller {
       const { email, userName } = ctx.request.body as { userName: string, email: string };
       const { bool, msg } = await ctx.service.user.checkUserNameAndEmail(userName, email);
       if (!bool) {
-        handleError({ ctx, message: msg });
+        ctx.helper.response.handleError({ ctx, msg });
       }
       const code = (Math.random() * 1000000).toFixed();
       // 在会话中添加验证码字段code
       ctx.session!.code = code;
       // 发送邮件
-      sendMail({
+      ctx.helper.mail.sendMail({
         to: email,
         subject: '验证码',
         text: '验证码',
@@ -77,10 +74,10 @@ export default class UserController extends Controller {
                 </div>
             `,
       });
-      handleSuccess({ ctx, message: '邮件发送成功' });
+      ctx.helper.response.handleSuccess({ ctx, msg: '邮件发送成功' });
     } catch (error) {
       console.log(error);
-      handleError({ ctx, message: '邮件发送失败' });
+      ctx.helper.response.handleError({ ctx, msg: '邮件发送失败' });
     }
   }
 
@@ -97,20 +94,20 @@ export default class UserController extends Controller {
       const { userName, password, code } = ctx.request.body as { userName: string, password: string, code:string};
       const loginCode = ctx.session!.loginCode;
       if (code !== loginCode) {
-        handleError({ ctx, message: '验证码错误', result: false });
+        ctx.helper.response.handleError({ ctx, msg: '验证码错误', data: false });
       }
       const user = await ctx.model.User.findOne({ [Op.and]: { userName, deleted: 0 } });
       if (user === null) {
-        handleError({ ctx, message: '该用户不存在', result: false });
+        ctx.helper.response.handleError({ ctx, msg: '该用户不存在', data: false });
       } else {
         if (user.password !== password) {
-          handleError({ ctx, message: '密码错误', result: false });
+          ctx.helper.response.handleError({ ctx, msg: '密码错误', data: false });
         }
         const token = await ctx.service.user.generateToken(user.id, user.role_ids);
-        handleSuccess({ ctx, message: '登录成功', result: { token } });
+        ctx.helper.response.handleSuccess({ ctx, msg: '登录成功', data: { token } });
       }
     } catch (error) {
-      handleError({ ctx, message: '未知错误' });
+      ctx.helper.response.handleError({ ctx, msg: '未知错误' });
     }
   }
 
@@ -149,9 +146,9 @@ export default class UserController extends Controller {
     try {
       const { uid } = ctx.auth;
       const user = await ctx.model.User.findOne({ attributes: [ 'user_name', 'role_ids', 'info', 'id' ], [Op.and]: { id: uid, deleted: 0 } });
-      handleSuccess({ ctx, message: '查询用户信息成功', result: { user } });
+      ctx.helper.response.handleSuccess({ ctx, msg: '查询用户信息成功', data: { user } });
     } catch (error) {
-      handleError({ ctx, message: '查询用户信息失败' });
+      ctx.helper.response.handleErrorr({ ctx, msg: '查询用户信息失败' });
     }
   }
 }

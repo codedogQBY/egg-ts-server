@@ -17,8 +17,8 @@ export default (appInfo: EggAppInfo) => {
   };
 
   config.redis = {
-    client: {
-      role: { // instanceName. See below
+    clients: {
+      auth: { // instanceName. See below
         port: 6379, // Redis port
         host: '127.0.0.1', // Redis host
         password: '',
@@ -27,7 +27,12 @@ export default (appInfo: EggAppInfo) => {
     },
   };
   config.jwt = {
-    secret: 'wechaty-bot',
+    secret: 'egg-ts',
+  };
+  config.security = {
+    csrf: {
+      enable: false,
+    },
   };
   return {
     ...config,
