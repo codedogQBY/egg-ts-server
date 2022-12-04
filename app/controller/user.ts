@@ -1,6 +1,9 @@
 import { Controller } from 'egg';
 import { Op } from 'sequelize';
 import svgCaptcha from 'svg-captcha';
+import { Account } from '../type/account';
+import { Menu } from '../type/menu';
+import {Models} from "../type/model";
 /**
  * @Controller user
  */
@@ -29,11 +32,11 @@ export default class UserController extends Controller {
         });
         ctx.helper.response.handleSuccess({ ctx, msg: '注册成功' });
       } else {
-        ctx.helper.response.handleErrorr({ ctx, msg });
+        ctx.helper.response.handleError({ ctx, msg });
       }
 
     } catch (error) {
-      ctx.helper.response.handleErrorr({ ctx, msg: '用户注册失败' });
+      ctx.helper.response.handleError({ ctx, msg: '用户注册失败' });
     }
   }
 
@@ -148,7 +151,186 @@ export default class UserController extends Controller {
       const user = await ctx.model.User.findOne({ attributes: [ 'user_name', 'role_ids', 'info', 'id' ], [Op.and]: { id: uid, deleted: 0 } });
       ctx.helper.response.handleSuccess({ ctx, msg: '查询用户信息成功', data: { user } });
     } catch (error) {
-      ctx.helper.response.handleErrorr({ ctx, msg: '查询用户信息失败' });
+      ctx.helper.response.handleError({ ctx, msg: '查询用户信息失败' });
     }
   }
+
+  async logout() {
+    const ctx = this.ctx;
+    try {
+      const token = ctx.header.authorization || ctx.cookies.get('authorization') || '';
+      await ctx.app.redis.get('auth').del(token);
+      ctx.helper.response.handleSuccess({ ctx, msg: '退出登录成功' });
+    } catch (e) {
+      ctx.helper.response.handleError({ ctx, msg: '退出登录失败' });
+    }
+  }
+
+  // 更新用户
+  async editUser() {
+    const ctx = this.ctx;
+    try {
+      const { nickName, profile = '', avatar, roleId, id } = ctx.request.body;
+      const info = {
+        nickName,
+        profile,
+        avatar,
+      };
+      await ctx.model.User.update({
+        info: JSON.stringify((info)),
+        role_id: roleId,
+      }, {
+        where: {
+          id,
+        },
+      });
+      ctx.helper.response.handleSuccess({ ctx, msg: '更新用户信息成功' });
+    } catch (e) {
+      ctx.helper.response.handleError({ ctx, msg: '更新用户信息失败' });
+    }
+  }
+
+  // 更新用户详情
+  async editUserInfo() {
+    const ctx = this.ctx;
+    try {
+      const id = ctx.auth?.uid;
+      const { nickName, profile = '', avatar } = ctx.request.body;
+      const info = {
+        nickName,
+        profile,
+        avatar,
+      };
+      await ctx.model.User.update({
+        info: JSON.stringify((info)),
+      }, {
+        where: {
+          id,
+        },
+      });
+      ctx.helper.response.handleSuccess({ ctx, msg: '更新用户信息成功' });
+    } catch (e) {
+      ctx.helper.response.handleError({ ctx, msg: '更新用户信息失败' });
+    }
+  }
+
+  // 获取当前用户菜单
+  async getUserMenu() {
+    const ctx = this.ctx;
+    try {
+      const { scope: roleIds } = ctx.auth;
+      const roleRes = ctx.model.Role.findAll();
+      // 存放当前用户的角色和祖宗角色
+      const roleList: Account.Role[] = [];
+      // 过滤, 获取当前角色及当前角色的祖先角色的所有记录
+      const each = (list: Account.Role[], nodeId: number) => {
+        const arr = list.filter(item => item.id === nodeId);
+        if (arr.length) {
+          roleList.push(...arr);
+          each(list, arr[0].parentId);
+        }
+      };
+
+      // 将用户的角色ids转换为数组
+      const roleIdList: number[] = roleIds.split(',').map((str: string) => Number(str));
+      roleIdList.forEach(roleId => {
+        each(roleRes, roleId);
+      });
+
+      // 当前角色的角色树
+      const roleTree = ctx.helper.utils.getTreeByList(roleList, 0) as unknown as Account.Role[];
+      // 当前角色有权限的所有菜单.
+      let menuList: number[] = [];
+      const merge = (list: Account.Role[]) => {
+        list.forEach(item => {
+          menuList = [ ...new Set([ ...menuList, ...item.menuIds.split(',').map(str => Number(str)) ]) ];
+          if (item.children) {
+            merge(item.children);
+          }
+        });
+      };
+      // 合并当前角色和当前角色的祖先角色的所有菜单
+      merge(roleTree);
+      // roleId 字段，角色，与权限相关
+      const res = await ctx.model.Menu.findAll({
+        attributes: [ 'id', [ 'name', 'title' ], 'show', 'icon', 'component', 'redirect', 'parent_id', 'path', 'hide_children', 'serial_num', 'permission', 'type' ],
+        [Op.in]: {
+          id: menuList.join(','),
+        },
+      });
+
+      const sortEach = (arr: Menu.Menu[]) => {
+        ctx.helper.utils.sort(arr, 'serialNum', 'desc');
+        arr.forEach(item => {
+          if (item.children) {
+            sortEach(item.children);
+          }
+        });
+      };
+      // 根据serialNum排序
+      sortEach(res.results);
+
+      // 构建前端需要的menu树
+      const list = (res.results as Menu.Menu[]).map(
+        ({
+          name,
+          parentId,
+          id,
+          icon,
+          title,
+          show,
+          component,
+          redirect,
+          path,
+          hideChildren,
+          children,
+          serialNum,
+          permission,
+          type,
+        }) => {
+          const isHideChildren = Boolean(hideChildren);
+          const isShow = Boolean(show);
+          return {
+            name,
+            parentId,
+            id,
+            meta: {
+              icon,
+              title,
+              show: isShow,
+              hideChildren: isHideChildren,
+            },
+            component,
+            redirect,
+            path,
+            children,
+            serialNum,
+            permission,
+            type,
+          };
+        },
+      );
+
+      ctx.helper.response.handleSuccess({ ctx, msg: '获取当前用菜单成功', data: list });
+    } catch (e) {
+      ctx.helper.response.handleError({ ctx, msg: '获取当前用户菜单失败' });
+    }
+  }
+
+
+  // 获取用户列表
+  // async getUserList(){
+  //   const ctx = this.ctx
+  //   try {
+  //     const {
+  //       pageNum,
+  //       pageSize,
+  //     } = ctx.request.body as unknown as Models.BasePaginationQuery;
+  //
+  //     const res =
+  //
+  //   }catch (e) {
+  //
+  //   }
+  // }
 }

@@ -13,7 +13,7 @@ export default (appInfo: EggAppInfo) => {
     port: 3306, // 连接端口
     database: 'egg-ts', // 数据库名称
     username: 'root', // 用户名
-    password: null, // 密码
+    password: 'root', // 密码
   };
 
   config.redis = {

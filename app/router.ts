@@ -6,9 +6,9 @@ export default (app: Application) => {
 
 
   router.get('/', controller.home.index);
-  router.post('/api/register', controller.user.register);
-  router.post('/api/sendCodeEmail', controller.user.sendCodeEmail);
-  router.post('/api/login', controller.user.login);
+  router.post('/api/user/register', controller.user.register);
+  router.post('/api/user/sendCodeEmail', controller.user.sendCodeEmail);
+  router.post('/api/user/login', controller.user.login);
   router.get('/api/getCode', controller.user.getCode);
-  router.get('/api/getUserInfo', verifyToken, controller.user.getUserInfo);
+  router.get('/api/user/getUserInfo', verifyToken, controller.user.getUserInfo);
 };
