@@ -3,7 +3,7 @@ import { Op } from 'sequelize';
 import svgCaptcha from 'svg-captcha';
 import { Account } from '../type/account';
 import { Menu } from '../type/menu';
-import {Models} from "../type/model";
+import { Models } from '../type/model';
 /**
  * @Controller user
  */
@@ -319,18 +319,45 @@ export default class UserController extends Controller {
 
 
   // 获取用户列表
-  // async getUserList(){
-  //   const ctx = this.ctx
-  //   try {
-  //     const {
-  //       pageNum,
-  //       pageSize,
-  //     } = ctx.request.body as unknown as Models.BasePaginationQuery;
-  //
-  //     const res =
-  //
-  //   }catch (e) {
-  //
-  //   }
-  // }
+  async getUserList() {
+    const ctx = this.ctx;
+    try {
+      const { params, pageNum, pageSize } = ctx.request.body as unknown as Common.PaginationParams;
+      const { name } = params;
+      // 聚合查询
+      const res = ctx.model.User.findAll({
+        attributes: [ 'id', 'info', 'updated_at', 'role_ids', 'email', 'user_name' ],
+        include: {
+          model: ctx.model.Role,
+          attributes: [[ 'name', 'roleNames' ]],
+        },
+        where: {
+          deleted: 0,
+          [Op.in]: {
+            '$Role.id$': '$User.role_ids$',
+          },
+          [Op.like]: {
+            '$User.user_name$': `%${name}%`,
+          },
+        },
+        order: [[ 'updated_at', 'DESC' ]],
+        limit: pageSize,
+        offset: pageSize * pageNum,
+      });
+      const total = ctx.model.User.findAll().length;
+      const list = [];
+      for (const key in res[0]) {
+        const xItem = res[0][key];
+        const oldItem = list.find(item => item.id === xItem.id);
+        if (oldItem) {
+          oldItem.roleNames = `${oldItem.roleNames},${xItem.roleNames}`;
+        } else {
+          list.push(xItem);
+        }
+      }
+
+    } catch (e) {
+
+    }
+  }
 }

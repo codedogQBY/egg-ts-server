@@ -10,7 +10,9 @@ export default class RoleController extends Controller {
       const { pageNum, pageSize, params } = ctx.request.body;
       const { name = '' } = params;
       // 获取列表
-      const allRole = await ctx.model.Role.findAll({ attributes: [ 'id', 'name', 'describe', 'updated_at', 'updated_at', 'serial_num', 'menu_ids' ], [Op.like]: { name }, order: [[ 'updated_at', 'DESC' ]] });
+      const allRole = await ctx.model.Role.findAll({ attributes: [ 'id', 'name', 'describe', 'updated_at', 'updated_at', 'serial_num', 'menu_ids' ], where: {
+        [Op.like]: { name: `%${name}%` },
+      }, order: [[ 'updated_at', 'DESC' ]] });
       // 转换驼峰
       const roleList = allRole.map(ctx.helper.utils.lineToHumpObject);
       // 变成树形结构
