@@ -3,10 +3,13 @@ import { Op } from 'sequelize';
 import svgCaptcha from 'svg-captcha';
 import { Account } from '../type/account';
 import { Menu } from '../type/menu';
-import { Models } from '../type/model';
 /**
  * @Controller user
  */
+
+interface RetUser extends User {
+  roleNames?: string
+}
 
 export default class UserController extends Controller {
   /**
