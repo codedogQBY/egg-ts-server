@@ -17,5 +17,5 @@ export namespace Menu {
     permission: string
     type: MenuType
   }
-    type MenuType = 1 | 2 | 3;
+  export type MenuType = 1 | 2 | 3;
 }

@@ -3,12 +3,34 @@ import { Op } from 'sequelize';
 import svgCaptcha from 'svg-captcha';
 import { Account } from '../type/account';
 import { Menu } from '../type/menu';
+import { Models } from '../type/model';
 /**
  * @Controller user
  */
 
-interface RetUser extends User {
-  roleNames?: string
+interface MenuList extends Account.User {
+  roleParentId: number
+  menuId: number
+  roleName: string
+  roleId: number
+  menuName: string
+  menuType: Menu.MenuType
+  serialNum: number
+  show: 0 | 1
+  menuParentId: number
+  menuPermission: string
+}
+
+interface Permissions {
+  name: string
+  roleId: number
+  id: number
+  menuType: Menu.MenuType
+  show: number
+  parentId: number
+  serialNum: number
+  permission: string
+  actions: Account.Action[]
 }
 
 export default class UserController extends Controller {
@@ -325,10 +347,10 @@ export default class UserController extends Controller {
   async getUserList() {
     const ctx = this.ctx;
     try {
-      const { params, pageNum, pageSize } = ctx.request.body as unknown as Common.PaginationParams;
-      const { name } = params;
+      const { pageNum, pageSize } = ctx.request.body as unknown as Models.BasePaginationQuery;
+      // const { name } = params;
       // 聚合查询
-      const res = ctx.model.User.findAll({
+      const res = await ctx.model.User.findAll({
         attributes: [ 'id', 'info', 'updated_at', 'role_ids', 'email', 'user_name' ],
         include: {
           model: ctx.model.Role,
@@ -339,28 +361,121 @@ export default class UserController extends Controller {
           [Op.in]: {
             '$Role.id$': '$User.role_ids$',
           },
-          [Op.like]: {
-            '$User.user_name$': `%${name}%`,
-          },
         },
         order: [[ 'updated_at', 'DESC' ]],
         limit: pageSize,
         offset: pageSize * pageNum,
       });
       const total = ctx.model.User.findAll().length;
-      const list = [];
-      for (const key in res[0]) {
-        const xItem = res[0][key];
-        const oldItem = list.find(item => item.id === xItem.id);
-        if (oldItem) {
-          oldItem.roleNames = `${oldItem.roleNames},${xItem.roleNames}`;
-        } else {
-          list.push(xItem);
-        }
+      const list: Account.User[] = [];
+      for (const key in res) {
+        list.push(res[key]);
       }
-
+      const data = ctx.helper.utils.getPagination(
+        list.map(item => {
+          item.info = JSON.parse(item.info as unknown as string);
+          return ctx.helper.utils.lineToHumpObject(item);
+        }),
+        total,
+        pageSize,
+        pageNum,
+      );
+      ctx.helper.response.handleSuccess({ ctx, msg: '获取用户列表成功', data });
     } catch (e) {
+      ctx.helper.response.handleError({ ctx, msg: '获取用户列表失败' });
+    }
+  }
 
+  async query() {
+    const ctx = this.ctx;
+    try {
+      const { uid } = ctx.auth;
+      const allMenuList = (await ctx.model.User.findAll({
+        attributes: [ 'id', 'user_name', 'email', [ 'info', 'infoStr' ], 'deleted' ],
+        include: {
+          model: ctx.model.Role,
+          attributes: [[ 'name', 'roleNames' ], [ 'id', 'roleId' ], 'menu_ids', [ 'parent_id', 'roleParentId' ]],
+          include: {
+            model: ctx.model.Menu,
+            attributes: [[ 'name', 'menuName' ], [ 'id', 'menuId' ], [ 'type', 'menuType' ], 'show', 'serial_num', [ 'parent_id', 'menuParentId' ], [ 'permission', 'menuPermission' ]],
+          },
+        },
+        where: {
+          '$User.id$': uid,
+          [Op.in]: {
+            '$Role.id$': '$User.role_ids$',
+            '$Menu.id$': '$Role.menu.ids$',
+          },
+        },
+      })).map(item => {
+        item.info = JSON.parse(item.infoStr);
+        return {
+          ...item,
+        };
+      });
+      // 上面的查询会有重复, 过滤重复数据
+      const filterMenuList: MenuList[] = [];
+      allMenuList.forEach((element: MenuList) => {
+        const info: Account.UserInfo = JSON.parse(element.infoStr);
+        const data = filterMenuList.find(
+          item =>
+            info.nickName === item.info.nickName && element.roleIds === item.roleIds && element.menuId === item.menuId,
+        );
+        if (!data) {
+          filterMenuList.push(element);
+        }
+      });
+
+      const { info, roleName, userName, roleId, email } = allMenuList[0];
+
+      // 将数据转换为前端需要的数据结构
+      const menuList: Permissions[] = filterMenuList.map(item => {
+        return {
+          roleId: item.roleId,
+          roleName: item.roleName,
+          id: item.menuId,
+          menuType: item.menuType,
+          name: item.menuName,
+          show: item.show,
+          serialNum: item.serialNum,
+          actions: [],
+          parentId: item.menuParentId,
+          permission: item.menuPermission,
+        };
+      });
+
+      // 获取所有的操作(即按钮)
+      const allActions: Permissions[] = menuList.filter(item => item.menuType === 3);
+      // 获取所有的菜单目录和菜单
+      const allMenu: Permissions[] = menuList.filter(item => item.menuType === 1 || item.menuType === 2) || [];
+
+      // 根据parentId给菜单添加操作
+      allMenu.forEach(menu => {
+        menu.actions = allActions
+          .filter(item => item.parentId === menu.id)
+          .map(item => {
+            return {
+              id: item.id,
+              serialNum: item.serialNum,
+              permission: item.permission,
+            };
+          });
+      });
+
+      const userInfo = {
+        userName,
+        email,
+        info,
+        role: {
+          roleName,
+          roleId,
+          permissions: allMenu,
+        },
+      };
+
+      ctx.helper.response.handleSuccess({ ctx, msg: '获取用户信息成功', data: userInfo });
+    } catch (e) {
+      ctx.helper.response.handleError({ ctx, msg: '获取用户信息失败' });
     }
   }
 }

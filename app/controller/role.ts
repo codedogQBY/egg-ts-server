@@ -95,8 +95,10 @@ export default class RoleController extends Controller {
     try {
       const { ids } = ctx.request.query;
       await ctx.model.Role.delete({
-        [Op.in]: {
-          id: ids,
+        where: {
+          [Op.in]: {
+            id: ids,
+          },
         },
       });
       ctx.helper.response.handleSuccess({ ctx, msg: '删除角色成功' });
