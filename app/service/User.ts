@@ -56,4 +56,8 @@ export default class User extends Service {
     return token;
   }
 
+  public async saveToken(key: string, uid: number) {
+    await this.app.redis.get('auth').setex(key, 60 * 60 * 24 * 0.5, uid);
+  }
+
 }

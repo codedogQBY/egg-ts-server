@@ -9,12 +9,12 @@ export default class RoleController extends Controller {
     try {
       const { pageNum, pageSize, params } = ctx.request.body;
       const { name = '' } = params;
+      const whereParam = {}
+      name && (whereParam[Op.like] = { name: `%${name}%` })
       // 获取列表
-      const allRole = await ctx.model.Role.findAll({ attributes: [ 'id', 'name', 'describe', 'updated_at', 'updated_at', 'serial_num', 'menu_ids' ], where: {
-        [Op.like]: { name: `%${name}%` },
-      }, order: [[ 'updated_at', 'DESC' ]] });
+      const allRole = await ctx.model.Role.findAll({ attributes: [ 'id', 'name', 'describe', 'updated_at', 'parent_id', 'serial_num', 'menu_ids' ], where: whereParam, order: [[ 'updated_at', 'DESC' ]] });
       // 转换驼峰
-      const roleList = allRole.map(ctx.helper.utils.lineToHumpObject);
+      const roleList = allRole.map(item => ctx.helper.utils.lineToHumpObject(item));
       // 变成树形结构
       const records = ctx.helper.utils.getTreeByList(roleList, 0);
       // 获取总数
@@ -36,6 +36,7 @@ export default class RoleController extends Controller {
       const data = ctx.helper.response.getPagination(records, total, pageSize, pageNum);
       ctx.helper.response.handleSuccess({ ctx, msg: '获取角色列表成功', data });
     } catch (e) {
+      console.error(e)
       ctx.helper.response.handleError({ ctx, msg: '获取角色列表失败' });
     }
   }
@@ -67,6 +68,7 @@ export default class RoleController extends Controller {
       ]));
       ctx.helper.response.handleSuccess({ ctx, msg: '编辑角色成功' });
     } catch (e) {
+      console.error(e)
       ctx.helper.response.handleError({ ctx, msg: '编辑角色失败' });
     }
   }
@@ -85,6 +87,7 @@ export default class RoleController extends Controller {
       await ctx.service.role.updateRedisRole();
       ctx.helper.response.handleSuccess({ ctx, msg: '添加角色成功' });
     } catch (e) {
+      console.error(e)
       ctx.helper.response.handleError({ ctx, msg: '添加角色失败' });
     }
   }
@@ -94,15 +97,16 @@ export default class RoleController extends Controller {
     const ctx = this.ctx;
     try {
       const { ids } = ctx.request.query;
-      await ctx.model.Role.delete({
+      await ctx.model.Role.destroy({
         where: {
-          [Op.in]: {
-            id: ids,
+          id:{
+            [Op.in]: ids.split(','),
           },
         },
       });
       ctx.helper.response.handleSuccess({ ctx, msg: '删除角色成功' });
     } catch (e) {
+      console.error(e)
       ctx.helper.response.handleError({ ctx, msg: '删除角色失败' });
     }
   }
@@ -112,11 +116,13 @@ export default class RoleController extends Controller {
     const ctx = this.ctx;
     try {
       // 获取列表
-      const allRole = await ctx.model.Role.findAll({ attributes: [ 'id', 'name', 'describe', 'updated_at', 'updated_at', 'serial_num', 'menu_ids' ], order: [[ 'updated_at', 'DESC' ]] });
+      const allRole = await ctx.model.Role.findAll({ attributes: [ 'id', 'name', 'describe', 'updated_at', 'updated_at', 'serial_num', 'menu_ids','parent_id' ], order: [[ 'updated_at', 'DESC' ]] });
       // 转换驼峰
-      const roleList = allRole.map(ctx.helper.utils.lineToHumpObject);
+      const roleList = allRole.map((item)=> ctx.helper.utils.lineToHumpObject(item));
       // 变成树形结构
       const records = ctx.helper.utils.getTreeByList(roleList, 0);
+      
+      
       // 排序
       const each = (arr: Models.TreeNode[]) => {
         ctx.helper.utils.sort(arr, 'serialNum', 'desc');
@@ -130,6 +136,7 @@ export default class RoleController extends Controller {
       // 获取成功
       ctx.helper.response.handleSuccess({ ctx, msg: '获取角色列表成功', data: records });
     } catch (e) {
+      console.error(e)
       ctx.helper.response.handleError({ ctx, msg: '获取角色列表失败' });
     }
   }
@@ -139,11 +146,12 @@ export default class RoleController extends Controller {
     const ctx = this.ctx;
     try {
       const { ids, roleId } = ctx.request.body;
-      await ctx.model.Role.update({ menu_ids: ids.join(',') }, { where: {
+      await ctx.model.Role.update({ menu_ids: ids }, { where: {
         id: roleId,
       } });
       ctx.helper.response.handleSuccess({ ctx, msg: '添加角色成功' });
     } catch (e) {
+      console.error(e)
       ctx.helper.response.handleError({ ctx, msg: '添加角色失败' });
     }
   }

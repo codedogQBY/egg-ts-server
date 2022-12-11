@@ -13,7 +13,7 @@ export default class RoleService extends Service {
     // 查询id对应的角色的菜单id
     const res = await ctx.model.Role.findOne({ attributes: [ 'menu_ids' ], where: { id: scope } });
     // 查询菜单各个菜单id对应的权限
-    const menuList = await ctx.model.Menu.findAll({ attributes: [ 'permission' ], [Op.in]: { id: res.menu_id.split(',') } });
+    const menuList = await ctx.model.Menu.findAll({ attributes: [ 'permission' ], [Op.in]: { id: res.menu_id } });
     // 返回权限
     return menuList || [];
   }
@@ -21,14 +21,14 @@ export default class RoleService extends Service {
   // 获取所有角色权限列表
   async getAllRolePermission() {
     const ctx = this.ctx;
-    const res = ctx.model.Role.findAll({ attributes: [ 'id', 'menu_ids', 'parent_id', 'name' ] });
+    const res =await  ctx.model.Role.findAll({ attributes: [ 'id', 'menu_ids', 'parent_id', 'name' ] });
     const RoleList: Role.Role[] = [];
     for (const item of res) {
       RoleList.push({
         id: item.id,
         menuList: await ctx.service.role.getUserPermission({ scope: String(item.id), uid: 0 }),
         name: item.name,
-        parentId: item.parentId,
+        parentId: item.parentId || '',
       });
     }
     return RoleList;

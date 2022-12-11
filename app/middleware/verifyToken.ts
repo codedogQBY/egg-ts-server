@@ -18,7 +18,7 @@ module.exports = (options: { secret: string }) => {
   return async function verifyToken(ctx: Context, next: ()=>{}) {
     // 获取token
     const userToken = getToken(ctx);
-    const serverToken = await ctx.app.redis.get(userToken);
+    const serverToken = await ctx.app.redis.get('auth').get(userToken);
     if (!userToken || !serverToken) {
       ctx.status = 403;
       return;
@@ -27,7 +27,7 @@ module.exports = (options: { secret: string }) => {
     const { uid, iat, scope } = ctx.app.jwt.verify(userToken, options.secret);
 
     if (iat < new Date().getDate() / 1000) {
-      ctx.status = 403;
+      ctx.status = 401;
       return;
     }
     // 在上下文保存uid和scope

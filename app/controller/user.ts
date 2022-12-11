@@ -1,5 +1,5 @@
 import { Controller } from 'egg';
-import { Op } from 'sequelize';
+import { Op,QueryTypes } from 'sequelize';
 import svgCaptcha from 'svg-captcha';
 import { Account } from '../type/account';
 import { Menu } from '../type/menu';
@@ -61,6 +61,7 @@ export default class UserController extends Controller {
       }
 
     } catch (error) {
+      console.error(error);
       ctx.helper.response.handleError({ ctx, msg: '用户注册失败' });
     }
   }
@@ -132,9 +133,11 @@ export default class UserController extends Controller {
           ctx.helper.response.handleError({ ctx, msg: '密码错误', data: false });
         }
         const token = await ctx.service.user.generateToken(user.id, user.role_ids);
-        ctx.helper.response.handleSuccess({ ctx, msg: '登录成功', data: { token } });
+        await ctx.service.user.saveToken(token, user.id);
+        ctx.helper.response.handleSuccess({ ctx, msg: '登录成功', data:  token  });
       }
     } catch (error) {
+      console.error(error);
       ctx.helper.response.handleError({ ctx, msg: '未知错误' });
     }
   }
@@ -176,6 +179,7 @@ export default class UserController extends Controller {
       const user = await ctx.model.User.findOne({ attributes: [ 'user_name', 'role_ids', 'info', 'id' ], [Op.and]: { id: uid, deleted: 0 } });
       ctx.helper.response.handleSuccess({ ctx, msg: '查询用户信息成功', data: { user } });
     } catch (error) {
+      console.error(error);
       ctx.helper.response.handleError({ ctx, msg: '查询用户信息失败' });
     }
   }
@@ -187,6 +191,7 @@ export default class UserController extends Controller {
       await ctx.app.redis.get('auth').del(token);
       ctx.helper.response.handleSuccess({ ctx, msg: '退出登录成功' });
     } catch (e) {
+      console.error(e);
       ctx.helper.response.handleError({ ctx, msg: '退出登录失败' });
     }
   }
@@ -211,6 +216,7 @@ export default class UserController extends Controller {
       });
       ctx.helper.response.handleSuccess({ ctx, msg: '更新用户信息成功' });
     } catch (e) {
+      console.error(e);
       ctx.helper.response.handleError({ ctx, msg: '更新用户信息失败' });
     }
   }
@@ -235,6 +241,7 @@ export default class UserController extends Controller {
       });
       ctx.helper.response.handleSuccess({ ctx, msg: '更新用户信息成功' });
     } catch (e) {
+      console.error(e);
       ctx.helper.response.handleError({ ctx, msg: '更新用户信息失败' });
     }
   }
@@ -244,7 +251,8 @@ export default class UserController extends Controller {
     const ctx = this.ctx;
     try {
       const { scope: roleIds } = ctx.auth;
-      const roleRes = ctx.model.Role.findAll();
+      let roleRes = await (ctx.model.Role.findAll()) as Account.Role[]
+      roleRes = roleRes.map(item => ctx.helper.utils.lineToHumpObject(item))as Account.Role[]
       // 存放当前用户的角色和祖宗角色
       const roleList: Account.Role[] = [];
       // 过滤, 获取当前角色及当前角色的祖先角色的所有记录
@@ -260,7 +268,7 @@ export default class UserController extends Controller {
       const roleIdList: number[] = roleIds.split(',').map((str: string) => Number(str));
       roleIdList.forEach(roleId => {
         each(roleRes, roleId);
-      });
+      });      
 
       // 当前角色的角色树
       const roleTree = ctx.helper.utils.getTreeByList(roleList, 0) as unknown as Account.Role[];
@@ -276,14 +284,17 @@ export default class UserController extends Controller {
       };
       // 合并当前角色和当前角色的祖先角色的所有菜单
       merge(roleTree);
+      
+      
       // roleId 字段，角色，与权限相关
-      const res = await ctx.model.Menu.findAll({
-        attributes: [ 'id', [ 'name', 'title' ], 'show', 'icon', 'component', 'redirect', 'parent_id', 'path', 'hide_children', 'serial_num', 'permission', 'type' ],
-        [Op.in]: {
-          id: menuList.join(','),
+      let res = await ctx.model.Menu.findAll({
+        attributes: [ 'id', 'name', 'show', 'icon', 'component', 'redirect', 'parent_id', 'path', 'hide_children', 'serial_num', 'permission', 'type' ],
+        where:{
+          id: {
+            [Op.in]: menuList
+          },
         },
       });
-
       const sortEach = (arr: Menu.Menu[]) => {
         ctx.helper.utils.sort(arr, 'serialNum', 'desc');
         arr.forEach(item => {
@@ -293,26 +304,27 @@ export default class UserController extends Controller {
         });
       };
       // 根据serialNum排序
-      sortEach(res.results);
-
+      sortEach(res);
       // 构建前端需要的menu树
-      const list = (res.results as Menu.Menu[]).map(
-        ({
-          name,
-          parentId,
-          id,
-          icon,
-          title,
-          show,
-          component,
-          redirect,
-          path,
-          hideChildren,
-          children,
-          serialNum,
-          permission,
-          type,
-        }) => {
+      
+      const list = (res as Menu.Menu[]).map(
+        (item) => {
+          const {
+            parent_id:parentId,
+            id,
+            icon,
+            show,
+            component,
+            redirect,
+            path,
+            hide_children:hideChildren,
+            children,
+            serial_num:serialNum,
+            permission,
+            type,
+            name
+          } = item
+          
           const isHideChildren = Boolean(hideChildren);
           const isShow = Boolean(show);
           return {
@@ -321,7 +333,7 @@ export default class UserController extends Controller {
             id,
             meta: {
               icon,
-              title,
+              title:name,
               show: isShow,
               hideChildren: isHideChildren,
             },
@@ -338,6 +350,7 @@ export default class UserController extends Controller {
 
       ctx.helper.response.handleSuccess({ ctx, msg: '获取当前用菜单成功', data: list });
     } catch (e) {
+      console.error(e);
       ctx.helper.response.handleError({ ctx, msg: '获取当前用户菜单失败' });
     }
   }
@@ -347,25 +360,27 @@ export default class UserController extends Controller {
   async getUserList() {
     const ctx = this.ctx;
     try {
-      const { pageNum, pageSize } = ctx.request.body as unknown as Models.BasePaginationQuery;
-      // const { name } = params;
+      const { pageNum, pageSize,params } = ctx.request.body as unknown as Models.BasePaginationQuery;
+      const { name } = params;
       // 聚合查询
-      const res = await ctx.model.User.findAll({
-        attributes: [ 'id', 'info', 'updated_at', 'role_ids', 'email', 'user_name' ],
-        include: {
-          model: ctx.model.Role,
-          attributes: [[ 'name', 'roleNames' ]],
-        },
-        where: {
-          deleted: 0,
-          [Op.in]: {
-            '$Role.id$': '$User.role_ids$',
-          },
-        },
-        order: [[ 'updated_at', 'DESC' ]],
-        limit: pageSize,
-        offset: pageSize * pageNum,
-      });
+      const res = await ctx.model.query(`
+      SELECT
+        user.id,
+        user.info,
+        user.updated_at,
+        user.email,
+        user.user_name,
+        user.role_ids roleIds,
+        role.name roleNames
+      FROM
+        users as user,
+        roles as role
+      WHERE
+        user.deleted = 0 
+        ${name ? `AND user.user_name = ${`"${name}"`}` : ''}
+      AND
+        FIND_IN_SET(role.id , user.role_ids)
+        LIMIT ${pageNum-1}, ${pageSize}`,{ type: QueryTypes.SELECT }) as Account.User[];
       const total = ctx.model.User.findAll().length;
       const list: Account.User[] = [];
       for (const key in res) {
@@ -373,7 +388,8 @@ export default class UserController extends Controller {
       }
       const data = ctx.helper.utils.getPagination(
         list.map(item => {
-          item.info = JSON.parse(item.info as unknown as string);
+          // @ts-ignore
+          item.info = JSON.parse(item.info || "{}")
           return ctx.helper.utils.lineToHumpObject(item);
         }),
         total,
@@ -382,6 +398,7 @@ export default class UserController extends Controller {
       );
       ctx.helper.response.handleSuccess({ ctx, msg: '获取用户列表成功', data });
     } catch (e) {
+      console.error(e);
       ctx.helper.response.handleError({ ctx, msg: '获取用户列表失败' });
     }
   }
@@ -390,25 +407,34 @@ export default class UserController extends Controller {
     const ctx = this.ctx;
     try {
       const { uid } = ctx.auth;
-      const allMenuList = (await ctx.model.User.findAll({
-        attributes: [ 'id', 'user_name', 'email', [ 'info', 'infoStr' ], 'deleted' ],
-        include: {
-          model: ctx.model.Role,
-          attributes: [[ 'name', 'roleNames' ], [ 'id', 'roleId' ], 'menu_ids', [ 'parent_id', 'roleParentId' ]],
-          include: {
-            model: ctx.model.Menu,
-            attributes: [[ 'name', 'menuName' ], [ 'id', 'menuId' ], [ 'type', 'menuType' ], 'show', 'serial_num', [ 'parent_id', 'menuParentId' ], [ 'permission', 'menuPermission' ]],
-          },
-        },
-        where: {
-          '$User.id$': uid,
-          [Op.in]: {
-            '$Role.id$': '$User.role_ids$',
-            '$Menu.id$': '$Role.menu.ids$',
-          },
-        },
-      })).map(item => {
-        item.info = JSON.parse(item.infoStr);
+      const allMenuList = (await ctx.model.query(`
+    SELECT
+        user.user_name,
+        user.email,
+        user.info infoStr,
+        user.deleted,
+        role.name roleName,
+        role.id roleId,
+        role.menu_ids,
+        role.parent_id roleParentId,
+        menu.name menuName,
+        menu.id menuId,
+        menu.type menuType,
+        menu.show,
+        menu.serial_num,
+        menu.parent_id menuParentId,
+        menu.permission menuPermission
+    FROM
+         users user,
+         roles role,
+         menus menu
+    WHERE
+        user.id = ${uid}
+        AND FIND_IN_SET(role.id , user.role_ids)
+        AND FIND_IN_SET(menu.id , role.menu_ids)
+  `,{ type: QueryTypes.SELECT }) as MenuList[]).map(item => {
+    
+        item.info = JSON.parse(item.infoStr || '{}');
         return {
           ...item,
         };
@@ -416,7 +442,7 @@ export default class UserController extends Controller {
       // 上面的查询会有重复, 过滤重复数据
       const filterMenuList: MenuList[] = [];
       allMenuList.forEach((element: MenuList) => {
-        const info: Account.UserInfo = JSON.parse(element.infoStr);
+        const info: Account.UserInfo = JSON.parse(element.infoStr || '{}');
         const data = filterMenuList.find(
           item =>
             info.nickName === item.info.nickName && element.roleIds === item.roleIds && element.menuId === item.menuId,
@@ -475,6 +501,7 @@ export default class UserController extends Controller {
 
       ctx.helper.response.handleSuccess({ ctx, msg: '获取用户信息成功', data: userInfo });
     } catch (e) {
+      console.error(e);
       ctx.helper.response.handleError({ ctx, msg: '获取用户信息失败' });
     }
   }

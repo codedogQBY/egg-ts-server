@@ -9,7 +9,7 @@ class UtilsHelper {
     // 属性配置设置
     const attr = {
       id: options?.id || 'id',
-      parentId: options?.parentId || 'parentId',
+      parentId: options?.parentId  ||'parentId',
       rootId,
     };
     const toTreeData = (
@@ -77,19 +77,17 @@ class UtilsHelper {
     return str.replace(/\_(\w)/g, (_all, letter: string) => letter.toUpperCase());
   }
 
-  public isValidKey(key: string | number | symbol, object: object): key is keyof typeof object {
-    return key in object;
-  }
 
   public lineToHumpObject(obj) {
     let key: string;
     const element: {
       [key: string]: any
     } = {};
-    for (key in obj) {
-      if (obj.hasOwnProperty(key)) {
-        if (this.isValidKey(key, obj)) {
-          const value = obj[key];
+    const o = JSON.parse(JSON.stringify(obj))
+    for (key in o) {
+      if (o.hasOwnProperty(key)) {
+        if (key in o) {
+          const value = o[key];
           if (typeof key === 'string' && (key as string).indexOf('_at') > -1) {
             element[this.lineToHump(key)] = this.format(value);
           } else {
@@ -101,6 +99,16 @@ class UtilsHelper {
     return {
       ...element,
     };
+  }
+
+  getPagination<T>(records: Array<T>, total: number, pageSize: number, pageNum: number) {
+    return {
+      records,
+      total,
+      pageSize: pageSize,
+      current: pageNum,
+      pages: Math.ceil(total / pageSize),
+    }
   }
 }
 export default new UtilsHelper();
