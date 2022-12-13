@@ -15,13 +15,14 @@ export default class User extends Service {
     try {
       const ctx = this.ctx;
       const query = {
-        [Op.or]: {
-          user_name: userName,
-          email,
-        },
+        where:{
+          [Op.or]: [
+            {user_name: userName},
+            {email},
+          ], 
+        }
       };
       const res = await ctx.model.User.findAll(query);
-
       if (res.length > 0) {
         const userNameList = res.filter((item: { userName: string }) => item.userName === userName);
         const emailList = res.filter((item: { email: string }) => item.email === email);
@@ -44,7 +45,6 @@ export default class User extends Service {
     } catch (error) {
       throw new Error('查询用户或邮箱失败');
     }
-
   }
 
   // 生成token

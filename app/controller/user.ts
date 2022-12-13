@@ -66,6 +66,28 @@ export default class UserController extends Controller {
     }
   }
 
+  // 添加用户
+  public async addUser(){
+    const ctx = this.ctx;
+    try {
+      const { password, userName, email,info,roleIds} = ctx.request.body;
+      const { bool, msg } = await ctx.service.user.checkUserNameAndEmail(userName, email);
+      if (!bool) {
+        await ctx.model.User.create({
+          password, user_name: userName, email,
+          info:JSON.stringify(info),
+          role_ids:roleIds
+        });
+        ctx.helper.response.handleSuccess({ ctx, msg: '用户添加成功' });
+      } else {
+        ctx.helper.response.handleError({ ctx, msg });
+      }
+
+    } catch (error) {
+      console.error(error);
+      ctx.helper.response.handleError({ ctx, msg: '用户添加失败' });
+    }
+  }
 
   /**
      * @summary 获取注册验证码
@@ -81,10 +103,43 @@ export default class UserController extends Controller {
       const { bool, msg } = await ctx.service.user.checkUserNameAndEmail(userName, email);
       if (!bool) {
         ctx.helper.response.handleError({ ctx, msg });
+      }else{
+        const code = (Math.random() * 1000000).toFixed();
+        // 在会话中添加验证码字段code
+        ctx.session!.code = code;
+        // 发送邮件
+        ctx.helper.mail.sendMail({
+          to: email,
+          subject: '验证码',
+          text: '验证码',
+          html: `
+                  <div >
+                      <p>您正在注册智能营销平台帐号，用户名<b>${userName}</b>，
+                      验证邮箱为<b>${email}</b> 。
+                      验证码为：</p>
+                      <p style="color: green;font-weight: 600;margin: 0 6px;text-align: center; font-size: 20px">
+                        ${code}
+                      </p>
+                      <p>请在注册页面填写该改验证码</p>
+                      <p>若不是您所发，请忽略</p>
+                  </div>
+              `,
+        });
+        ctx.helper.response.handleSuccess({ ctx, msg: '邮件发送成功' });
       }
+    } catch (error) {
+      console.log(error);
+      ctx.helper.response.handleError({ ctx, msg: '邮件发送失败' });
+    }
+  }
+
+  public async editPasswordEmail() {
+    const ctx = this.ctx;
+    try {
+      const { email, userName } = ctx.request.body as { userName: string, email: string };
       const code = (Math.random() * 1000000).toFixed();
       // 在会话中添加验证码字段code
-      ctx.session!.code = code;
+      ctx.session!.editPasswordCode = code;
       // 发送邮件
       ctx.helper.mail.sendMail({
         to: email,
@@ -92,7 +147,7 @@ export default class UserController extends Controller {
         text: '验证码',
         html: `
                 <div >
-                    <p>您正在注册智能营销平台帐号，用户名<b>${userName}</b>，
+                    <p>您正在找回/修改智能营销平台帐号，用户名<b>${userName}</b>，
                     验证邮箱为<b>${email}</b> 。
                     验证码为：</p>
                     <p style="color: green;font-weight: 600;margin: 0 6px;text-align: center; font-size: 20px">
@@ -110,6 +165,51 @@ export default class UserController extends Controller {
     }
   }
 
+  public async editPassword() {
+    const ctx = this.ctx;
+    try {
+      const { code, emailCode,password } = ctx.request.body
+      // 这里懒得改，就是修改密码的图形验证码
+      if(code !== ctx.session.loginCode && emailCode !== ctx.session.editPasswordCode){
+        ctx.helper.response.handleError({ ctx, msg: '邮箱验证码或者图形验证码错误！请仔细检查' });
+      }else{
+        const {uid} = ctx.auth
+        await ctx.model.User.update({
+          password
+        }, {
+          where: {
+            id:uid,
+          },
+        });
+        ctx.helper.response.handleSuccess({ ctx, msg: '修改密码成功' });
+      }
+    } catch (error) {
+      console.log(error);
+      ctx.helper.response.handleError({ ctx, msg: '修改密码失败' });
+    }
+  }
+
+  // 删除用户
+  public async deleteUserByIds() {
+    const ctx = this.ctx;
+    try {
+      const { ids } = ctx.request.query
+      await ctx.model.User.update({
+        deleted:1
+      }, {
+        where: {
+          id:{
+            [Op.in]:ids.split(',')
+          }
+        },
+      });
+      ctx.helper.response.handleSuccess({ ctx, msg: '删除用户成功' });
+    } catch (error) {
+      console.log(error);
+      ctx.helper.response.handleError({ ctx, msg: '删除用户失败' });
+    }
+  }
+
   /**
      * @summary 用户登录
      * @Description 用户登录接口
@@ -124,17 +224,19 @@ export default class UserController extends Controller {
       const loginCode = ctx.session!.loginCode;
       if (code !== loginCode) {
         ctx.helper.response.handleError({ ctx, msg: '验证码错误', data: false });
-      }
-      const user = await ctx.model.User.findOne({ [Op.and]: { userName, deleted: 0 } });
-      if (user === null) {
-        ctx.helper.response.handleError({ ctx, msg: '该用户不存在', data: false });
-      } else {
-        if (user.password !== password) {
-          ctx.helper.response.handleError({ ctx, msg: '密码错误', data: false });
+      }else{
+        const user = await ctx.model.User.findOne({ where:{[Op.and]: [ {user_name:userName}, {deleted: 0} ]} });
+        if (user === null) {
+          ctx.helper.response.handleError({ ctx, msg: '该用户不存在', data: false });
+        } else {
+          if (user.password !== password) {
+            ctx.helper.response.handleError({ ctx, msg: '密码错误', data: false });
+          }else{
+            const token = await ctx.service.user.generateToken(user.id, user.role_ids);
+            await ctx.service.user.saveToken(token, user.id);
+            ctx.helper.response.handleSuccess({ ctx, msg: '登录成功', data:  token  });
+          }
         }
-        const token = await ctx.service.user.generateToken(user.id, user.role_ids);
-        await ctx.service.user.saveToken(token, user.id);
-        ctx.helper.response.handleSuccess({ ctx, msg: '登录成功', data:  token  });
       }
     } catch (error) {
       console.error(error);
@@ -159,6 +261,7 @@ export default class UserController extends Controller {
       noise: 3, // 干扰线条数目
       width: 100, // 宽度
       color: true,
+      background:'#F5FFFA'
     });
     ctx.session!.loginCode = captcha.text; // 把验证码赋值给session
     ctx.response.type = 'image/svg+xml';
@@ -176,8 +279,8 @@ export default class UserController extends Controller {
     const ctx = this.ctx;
     try {
       const { uid } = ctx.auth;
-      const user = await ctx.model.User.findOne({ attributes: [ 'user_name', 'role_ids', 'info', 'id' ], [Op.and]: { id: uid, deleted: 0 } });
-      ctx.helper.response.handleSuccess({ ctx, msg: '查询用户信息成功', data: { user } });
+      const user = await ctx.model.User.findOne({ attributes: [ 'user_name', 'role_ids', 'info', 'id' ], where:{[Op.and]: [ {id: uid}, {deleted: 0} ]} });
+      ctx.helper.response.handleSuccess({ ctx, msg: '查询用户信息成功', data: { ...user,userName:user.user_name } });
     } catch (error) {
       console.error(error);
       ctx.helper.response.handleError({ ctx, msg: '查询用户信息失败' });
@@ -409,19 +512,19 @@ export default class UserController extends Controller {
       const { uid } = ctx.auth;
       const allMenuList = (await ctx.model.query(`
     SELECT
-        user.user_name,
+        user.user_name userName,
         user.email,
         user.info infoStr,
         user.deleted,
         role.name roleName,
         role.id roleId,
-        role.menu_ids,
+        role.menu_ids ,
         role.parent_id roleParentId,
         menu.name menuName,
         menu.id menuId,
         menu.type menuType,
         menu.show,
-        menu.serial_num,
+        menu.serial_num serialNum,
         menu.parent_id menuParentId,
         menu.permission menuPermission
     FROM

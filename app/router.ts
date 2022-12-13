@@ -5,7 +5,7 @@ export default (app: Application) => {
   const verifyToken = middleware.verifyToken(app.config.jwt);
 
   // 权限相关
-  router.get('/', controller.home.index);
+  router.get('/heart', controller.home.index);
   router.post('/api/v1/system/auth/register', controller.user.register);
   router.post('/api/v1/system/auth/sendCodeEmail', controller.user.sendCodeEmail);
   router.post('/api/v1/system/auth/login', controller.user.login);
@@ -19,6 +19,11 @@ export default (app: Application) => {
   router.post('/api/v1/system/user/getUserMenu', verifyToken, controller.user.getUserMenu);
   router.post('/api/v1/system/user/list', verifyToken, controller.user.getUserList);
   router.get('/api/v1/system/user/query', verifyToken, controller.user.query);
+  router.post('/api/v1/system/user/add', verifyToken, controller.user.addUser);
+  router.post('/api/v1/system/user/editPassword/email', verifyToken,controller.user.editPasswordEmail);
+  router.post('/api/v1/system/user/editPassword', verifyToken,controller.user.editPassword);
+  router.get('/api/v1/system/user/deleteUserByIds', verifyToken, controller.user.deleteUserByIds);
+
 
   // 角色相关
   router.post('/api/v1/system/role/add', verifyToken, controller.role.add);
@@ -35,5 +40,6 @@ export default (app: Application) => {
   router.get('/api/v1/system/menu/getMenuMap', verifyToken, controller.menu.getMenuMap);
   router.post('/api/v1/system/menu/list', verifyToken, controller.menu.list);
 
-
+  // 上传文件
+  router.post('/api/v1/system/common/upload/img', verifyToken, controller.file.uploadImg);
 };

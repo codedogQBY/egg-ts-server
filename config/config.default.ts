@@ -34,6 +34,16 @@ export default (appInfo: EggAppInfo) => {
       enable: false,
     },
   };
+
+  // 七牛云配置
+  config.qiniu = {
+    accessKey: 'Eb_wsDCa59El5JsQpNeCug6OJrZFtKqDbYecOCMc',
+    secretKey: '3_dhdwGLJc4gp49pKsHSoAfOJUWQ4ZxmA3foyKJC',
+    bucket: 'next-blog', // 七牛云存储空间名
+  }
+  config.multipart = {
+    mode: 'file',
+  };
   return {
     ...config,
   };
